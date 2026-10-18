@@ -1,0 +1,146 @@
+@baseUrl = http://localhost:5111
+@apiKey = tenant-a-key
+@sharedCredentialId = demo-shared-credential
+
+### 1. NoOwner finding
+# The tenant field is intentionally incorrect and is ignored by the API.
+POST {{baseUrl}}/ingest
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "batchId": "demo-no-owner",
+  "tenant": "tenant-b",
+  "events": [
+    {
+      "op": "upsert",
+      "agentId": "demo-no-owner-agent",
+      "version": 1,
+      "name": "Unowned demo agent",
+      "lifecycle": "persistent",
+      "ownerId": null,
+      "credentials": [],
+      "access": [
+        {
+          "target": "mcp:crm",
+          "scope": "read"
+        }
+      ]
+    }
+  ]
+}
+
+### 2. First agent using the shared credential
+# This request alone does not create a SharedCredential finding.
+POST {{baseUrl}}/ingest
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "batchId": "demo-shared-first",
+  "events": [
+    {
+      "op": "upsert",
+      "agentId": "demo-shared-agent-one",
+      "version": 1,
+      "name": "First shared-credential agent",
+      "lifecycle": "persistent",
+      "ownerId": "demo-owner",
+      "credentials": [
+        {
+          "credentialId": "{{sharedCredentialId}}",
+          "kind": "api-key",
+          "createdByAgentId": null,
+          "lastUsedAt": null
+        }
+      ],
+      "access": [
+        {
+          "target": "mcp:crm",
+          "scope": "read"
+        }
+      ]
+    }
+  ]
+}
+
+### 3. Second agent using the same credential
+# This re-evaluates both agents and creates SharedCredential findings for each.
+POST {{baseUrl}}/ingest
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "batchId": "demo-shared-second",
+  "events": [
+    {
+      "op": "upsert",
+      "agentId": "demo-shared-agent-two",
+      "version": 1,
+      "name": "Second shared-credential agent",
+      "lifecycle": "persistent",
+      "ownerId": "demo-owner",
+      "credentials": [
+        {
+          "credentialId": "{{sharedCredentialId}}",
+          "kind": "api-key",
+          "createdByAgentId": null,
+          "lastUsedAt": null
+        }
+      ],
+      "access": [
+        {
+          "target": "mcp:crm",
+          "scope": "read"
+        }
+      ]
+    }
+  ]
+}
+
+### 4. OverBroadAccess finding
+POST {{baseUrl}}/ingest
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "batchId": "demo-overbroad-access",
+  "events": [
+    {
+      "op": "upsert",
+      "agentId": "demo-overbroad-agent",
+      "version": 1,
+      "name": "Over-broad demo agent",
+      "lifecycle": "persistent",
+      "ownerId": "demo-owner",
+      "credentials": [],
+      "access": [
+        {
+          "target": "mcp:*",
+          "scope": "admin"
+        }
+      ]
+    }
+  ]
+}
+
+### 5. Read all findings for tenant-a
+# Each result includes ruleId, ruleVersion, severity, and recommendedAction.
+GET {{baseUrl}}/findings?limit=100
+X-Api-Key: {{apiKey}}
+
+### 6. Find high-severity remediation recommendations
+# Expected rules: NoOwner and SharedCredential.
+# Expected actions include assigning an owner and issuing/rotating credentials.
+GET {{baseUrl}}/findings?severity=High&limit=100
+X-Api-Key: {{apiKey}}
+
+### 7. Find medium-severity remediation recommendations
+# Expected rule: OverBroadAccess.
+# Expected action: narrow the agent's access targets and scopes.
+GET {{baseUrl}}/findings?severity=Medium&limit=100
+X-Api-Key: {{apiKey}}
+
+### 8. Optional: verify tenant-b cannot see tenant-a findings
+GET {{baseUrl}}/findings?limit=100
+X-Api-Key: tenant-b-key
